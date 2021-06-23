@@ -1,0 +1,232 @@
+---
+title: "Redesigned Project - Unemployment Rates in the U.S. in September 2020"
+author: "Uyen Huynh"
+date: "3/2/2021"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r package, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(tidyverse)
+library(micromapST)
+library(readxl)
+library(choroplethr)
+library(choroplethrMaps)
+library(ggplot2)
+library(RColorBrewer)
+library(acs)
+library(Hmisc)
+library(ggpubr)
+library(dplyr)
+library(graphics)
+library(png)
+library(grid)
+```
+The objective of this project is to improve the graph below, which is displayed on the U.S Bureau of Labor Statistics website. The purpose of the original graph is to represent the unemployment situation in the U.S., including:  
++ state-level unemployment rate in September 2020 (horizontal axis).  
++ 12-month unemployment rate change from September 2019 to September 2020 (vertical axis).  
++ number of unemployed persons in September 2020 (size of bubbles).  
+
+However, it does not provide an effective data visualization.
++ Firstly, it's difficult to compare the size among the bubbles.  
++ Secondly, we cannot distinguish states which have the same base color. For instance, the base colors of Tennessee and New York are light blue.   
++ Thirdly, there are a lot of overlapping circles near the vertical grid line at 6.0%.  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=10, fig.width=10}
+appimg <- readPNG('chart.png')
+grid.raster(appimg)
+```
+
+I propose to use the linked micromap and the choropleth map for this geographic dataset.
+
+## 1. Micromap plot
+### 1.1 Data Processing
+
+The original dataset is comprised of four columns, including state, unemployment rate, 12-month rate change and number of unemployed persons.
+
+```{r message=FALSE, warning=FALSE, include=TRUE}
+# load the Bad Graph data set
+badgraph <- read_excel("Bad Graph - Data.xlsx")
+# only keep necessary columns
+data <- select(badgraph, "State", "Unemployment rate", "Number of unemployed")
+# rename the columns
+names(data) <- c("State", "Sep2020", "Number2020")
+# Number column - change the unit value 
+data$Number2020 <- round(data$Number2020/1000,0)
+# display the first few rows
+print(head(data))
+```
+
+For the redesigned graph, to visualize more clearly about the change in unemployment rate from September 2019 to September 2020, I add an additional column which is from a different dataset on the same website. It provides information about the jobless rate in September 2019.   
+Here is the final data set for the micromap plot. 
+
+```{r echo=TRUE}
+# load the MonthRate data set 
+MonthRate <- read_excel("MonthRate2020.xlsx",
+                        col_types = c("text", "numeric", "numeric", 
+                                      "numeric", "numeric", "numeric", 
+                                      "numeric", "numeric", "numeric", 
+                                      "numeric", "numeric", "numeric", 
+                                      "numeric", "numeric"))
+# rename the columns
+names(MonthRate) <- c('State',
+                      'Sep2019',
+                      'Oct2019',
+                      'Nov2019',
+                      'Dec2019',
+                      'Jan2020',
+                      'Feb2020',
+                      'Mar2020',
+                      'Apr2020',
+                      'May2020',
+                      'Jun2020',
+                      'Jul2020',
+                      'Aug2020',
+                      'Sep2020')
+# extract the unemployment rate in Sep 2019
+rate2019 <- select(MonthRate, State, Sep2019) 
+# combine data & rate2019
+data <- merge(data,rate2019, by = "State")
+# display the first few rows
+print(head(data))
+```
+
+### 1.2 Produce the plot
+
+```{r fig.height=10, fig.width=8.5, message=FALSE, warning=FALSE}
+ 
+Desc <- data.frame(
+  type = c('maptail','id','dot','arrow','bar'),
+  lab1 = c('','','Unemployment Rate', '12-month Rate Change', 'Number of unemployed persons'),
+  lab2 = c('','','Sept. 2020','Sept. 2019 - Sept. 2020', 'Sept. 2020'),
+  lab3 = c('','','Percent','Percent','In thousands'),
+  col1 = c(NA,NA,'Sep2020','Sep2019','Number2020'),
+  col2 = c(NA,NA,NA,'Sep2020',NA),
+  refVals = c(NA,NA,7.9,NA,NA),
+  refTexts = c(NA,NA," National Rate",NA,NA)
+)
+
+micromapST(data, Desc,
+           rowNamesCol = 'State',
+           rowNames = 'full',
+           plotNames = 'ab',
+           sortVar = 'Sep2020', 
+           ascend = FALSE,
+           title = c("Unemployment Situation in the US, September 2020"),
+           ignoreNoMatches = TRUE
+)
+```
+The reason I choose the linked micromap is that we can divide all states into perceptual groups and use different colors to associate the states with their values.  
++ For the first column, there are ten small maps indicating the regions. It can be observed that the panels above median highlight the states which are mostly along the border from the West to the South and in the North East. For the panels below median, it highlights a cluster of states in the West and the Midwest. This is a very important pattern that the original graph could not display.  
++ The second column performs the name of all states explicitly, whereas we have to take time to find the color matching with the states on the top of the bad graph.  
++ The third column is to visualize the unemployment rate in September 2020. The order is sorted according to the rate. 
+Also, the vertical reference line added to represent the national unemployment rate at 7.9%.   
++ The fourth column is to display the 12-month unemployment rate change by an arrow. The starting value is the rate in September 2019 and the ending value is the rate in September 2020.  
++ The final column is to display the number of persons jobless in September 2020. I use the bar plot to differentiate the values between states, which are poorly visualized by the size of bubbles of the old graph.   
+
+## 2. The choropleth map
+
+One of the most powerful strength of the choropleth map is that we can easily discover value differences and geographic patterns only by the color scheme. Therefore, I plot four individual maps and each map corresponds to the rate of a month. Then, I combine them onto the same page to discover easily the change. 
+
+If each map is drawn separately with different colors and percentage intervals, there will be no connection and correlation between them. Therefore, the unemployment rate is converted to a factor variable for each small map, including four levels:   0.0-4.0%, 4.0-8.0%, 8.0- 12.0% and over 12%. In addtion, there are four colors corresponding to each level of the rate.
+
+### 2.1 Create functions
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+MonthRate <- filter(MonthRate, State != "Puerto Rico")
+
+# function to creat a dataframe for each indivudal plot
+datamap <- function(Month){
+  data <- MonthRate[,c("State",Month)]
+  colnames(data) <- c('region','value')
+  data$region <- upFirst(data$region, alllower = TRUE)
+  return(data)
+}
+
+# function to transform the Value column from number to categorical variable
+transform <- function(data){
+  data$str = ""
+  for (i in 1:nrow(data))
+  {
+    if (data[i,"value"] <= 4.0)
+    {
+      data[i,"str"] = "0.0 - 4.0"
+    } else if (data[i,"value"] > 4.0 & data[i,"value"] <= 8.0) {
+      data[i,"str"] = "4.0 - 8.0"
+    } else if (data[i,"value"] > 8.0 & data[i,"value"] <= 12.0) {
+      data[i,"str"] = "8.0 - 12.0"
+    } else {
+      data[i,"str"] = "> 12.0"
+    }
+  }
+  data$value = data$str
+  data$value <- factor(data$value, 
+                       levels=c('0.0 - 4.0','4.0 - 8.0','8.0 - 12.0','> 12.0'))
+  return(data)
+}
+
+# function to plot the choropleth map
+plotmap <- function(data, title){
+  chart <- state_choropleth(data,
+                            num_color = 4,
+                            legend = "Unemployment Rate (%)",
+                            title = sprintf("State-level Unemployment Rates in %s", title)) +
+    theme(text = element_text(color = "#084594"),
+          plot.title = element_text(face='bold',size = 18,hjust=0.5),
+          legend.position = "bottom")
+  return(chart)
+}
+```
+
+
+### 2.2 Plot - Unemployment Rates in Sept. 2019
+
+```{r MapSep2019, echo=TRUE, fig.height=7.5, fig.width=9}
+Sep2019 <- datamap("Sep2019")
+Sep2019 <- transform(Sep2019)
+A <- plotmap(Sep2019, "Sept. 2019")
+A
+```
+
+### 2.3 Plot - Unemployment Rates in Jan. 2020
+
+```{r MapJan2020, message=FALSE, warning=FALSE, fig.width=9, fig.height=7.5}
+Jan2020 <- datamap("Jan2020")
+Jan2020 <- transform(Jan2020)
+B <- plotmap(Jan2020, "Jan. 2020")
+B
+```
+
+### 2.4 Plot - Unemployment Rates in  Apr. 2020
+
+```{r MapApr2020, echo=FALSE, fig.height=7.5, fig.width=9, message=FALSE, warning=FALSE}
+Apr2020 <- datamap("Apr2020")
+Apr2020 <- transform(Apr2020)
+C <- plotmap(Apr2020, "Apr. 2020")
+C
+```
+
+### 2.5 Plot - Unemployment Rates in  Sep. 2020
+
+```{r echo=FALSE, fig.height=7.5, fig.width=9, message=FALSE, warning=FALSE}
+Sep2020 <- Sep2020 <- datamap("Sep2020")
+Sep2020 <- transform(Sep2020)
+D <- plotmap(Sep2020, "Sept. 2020")
+D
+```
+
+### 2.6 Combine the four individual maps A,B,C,D into one map
+
+```{r echo=TRUE, fig.height=10, fig.width=14, message=FALSE, warning=FALSE}
+ggarrange(A, B, C, D,
+          ncol = 2, nrow = 2,
+          legend = "bottom",
+          common.legend = TRUE)
+```
+The lightest blue describes the states having the lowest rate and the darkest color is used for the states having the highest rate. From the plot, we can see that the unemployment rate between September 2019 to January 2019 is very stable, however, the rate of all states in the U.S. rise dramatically in April 2020. In September 2020, the unemployment rate is mostly lower than the rate in April, but it is still much higher than the rate in September 2019.
+
+In conclusion, the micromap and choropleth map are suitable ways for geographic data visualization. They can reveal the pattern relating to regions and notice similarities and discrepancies between states.
+
