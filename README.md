@@ -15,4 +15,4 @@ However, it does not provide an effective data visualization.
 
 Therefore, I propose to use the linked micromap and the choropleth map because they are more suitable for geographic data visualization. Additionally, they can reveal the pattern relating to regions and notice similarities and discrepancies between states.
 
-Please refer to [notebook](https://uyenhnp.github.io/projects/redesigned-projects.html) to see both code and explanation. 
+Please refer to this [notebook](https://uyenhnp.github.io/projects/redesigned-projects.html) to see both code and explanation. 
