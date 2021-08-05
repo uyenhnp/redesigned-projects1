@@ -1,7 +1,8 @@
 # Redesigned Project - Unemployment Rates in the U.S. in September 2020
 
 The objective of this project is to improve the graph below, which is displayed on the U.S Bureau of Labor Statistics website. 
-![img](https://github.com/uyenhnp/redesigned-projects1/blob/master/chart.png)
+<img src="https://github.com/uyenhnp/redesigned-projects1/blob/master/chart.png?raw=true" width="400">
+
 The purpose of the original graph is to represent the unemployment situation in the U.S., including:
 + state-level unemployment rate in September 2020 (horizontal axis).
 + 12-month unemployment rate change from September 2019 to September 2020 (vertical axis).
